@@ -11,14 +11,6 @@ module.exports = serviceName => async (state, apiMethod = 'unknown') => {
     status: response.status,
   }
 
-  // const totalTime = moment.now() - startTime
-  // const tags = {
-  //   api_method: apiMethod,
-  //   method: state.req.method || 'GET',
-  //   response_code: response.status,
-  //   service: serviceName,
-  // }
-
   state.res.body = await response.text()
 
   const isJSON = (response.headers.get('content-type') || '').includes('application/json')

@@ -1,15 +1,10 @@
-const _ = require('lodash')
+const fetch = require('node-fetch')
 const Jira = require('./common/net/Jira')
 
 const issueIdRegEx = /([a-zA-Z0-9]+-[0-9]+)/g
 
-const eventTemplates = {
-  branch: '{{event.ref || event.pull_request.head.ref}}',
-  commits: "{{event.commits.map(c=>c.message).join(' ')}}",
-}
-
 module.exports = class {
-  constructor ({ githubEvent, argv, config }) {
+  constructor ({ event, argv, config }) {
     this.Jira = new Jira({
       baseUrl: config.baseUrl,
       token: config.token,
@@ -18,33 +13,30 @@ module.exports = class {
 
     this.config = config
     this.argv = argv
-    this.githubEvent = githubEvent
+    this.event = event
   }
 
   async execute () {
-    const template = eventTemplates[this.argv.from] || this.argv._.join(' ')
-    const extractString = this.preprocessString(template)
-    const match = extractString.match(issueIdRegEx)
+    const { from } = this.argv
+    const { event } = this
+    let str
+
+    if (from === 'branch') {
+      str = event.ref || event.pull_request.head.ref
+    } else {
+      console.log(event)
+      console.log(await fetch(event.commits_url).then(r => r.json()))
+      str = (await fetch(event.commits_url).then(r => r.json())).map(c => c.commit.message).join(' ')
+    }
+
+    const match = str.match(issueIdRegEx)
 
     if (!match) {
-      console.log(`String "${extractString}" does not contain issueKeys`)
+      console.log(`String "${str}" does not contain issueKeys`)
 
       return
     }
 
-    for (const issueKey of match) {
-      const issue = await this.Jira.getIssue(issueKey)
-
-      if (issue) {
-        return { issue: issue.key }
-      }
-    }
-  }
-
-  preprocessString (str) {
-    _.templateSettings.interpolate = /{{([\s\S]+?)}}/g
-    const tmpl = _.template(str)
-
-    return tmpl({ event: this.githubEvent })
+    return { issues: await Promise.all([...new Set(match)].map(this.Jira.getIssue)) }
   }
 }
